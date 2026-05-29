@@ -1,523 +1,284 @@
-import tkinter as tk
 import random
 import time
 import threading
+from typing import List, Tuple, Dict
 
-# =====================================================
-# Selection Sort（選擇排序）
-# 概念：
-# 每次從未排序區域中找出最小值
-# 再放到最前面
-# =====================================================
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation, PillowWriter
 
-def selection_sort(arr, draw_callback, speed):
 
-    # 取得陣列長度
+# =========================
+# 資料產生
+# =========================
+
+def generate_unique_random_numbers(n: int, min_value: int = 10, max_value: int = 200) -> List[int]:
+    """
+    產生 n 個不重複的隨機數字。
+
+    
+    """
+    if n > (max_value - min_value + 1):
+        raise ValueError("n 太大，超過可產生的不重複數字範圍。")
+
+    return random.sample(range(min_value, max_value + 1), n)
+
+
+# =========================
+# Selection Sort 選擇排序
+# =========================
+
+def selection_sort(data: List[int]) -> Tuple[List[List[int]], float]:
+    """
+    
+    時間複雜度：
+    Best / Average / Worst 都大約是 O(n^2)
+    """
+    arr = data.copy()
+    history = [arr.copy()]
+    start_time = time.perf_counter()
+
     n = len(arr)
-
-    # 外層迴圈控制目前排序位置
     for i in range(n):
+        min_index = i
 
-        # 假設目前位置為最小值
-        min_idx = i
-
-        # 從後面尋找更小的元素
         for j in range(i + 1, n):
+            if arr[j] < arr[min_index]:
+                min_index = j
 
-            # 如果找到更小值
-            if arr[j] < arr[min_idx]:
-                min_idx = j
+        if min_index != i:
+            arr[i], arr[min_index] = arr[min_index], arr[i]
+            history.append(arr.copy())
 
-            # 視覺化顯示
-            # 黃色：目前比較位置
-            # 紅色：目前最小值
-            draw_callback(
-                arr,
-                [ "yellow" if x == j else
-                    "red" if x == min_idx else
-                    "skyblue"
-                    for x in range(len(arr))  ]
+    end_time = time.perf_counter()
+    return history, end_time - start_time
+
+
+# =========================
+# Insertion Sort 插入排序
+# =========================
+
+def insertion_sort(data: List[int]) -> Tuple[List[List[int]], float]:
+    """
+    
+    時間複雜度：
+    Best: O(n)；Average / Worst: O(n^2)
+    """
+    arr = data.copy()
+    history = [arr.copy()]
+    start_time = time.perf_counter()
+
+    for i in range(1, len(arr)):
+        key = arr[i]
+        j = i - 1
+
+        while j >= 0 and arr[j] > key:
+            arr[j + 1] = arr[j]
+            j -= 1
+            history.append(arr.copy())
+
+        arr[j + 1] = key
+        history.append(arr.copy())
+
+    end_time = time.perf_counter()
+    return history, end_time - start_time
+
+
+# =========================
+# Quick Sort 快速排序
+# =========================
+
+def quick_sort(data: List[int]) -> Tuple[List[List[int]], float]:
+    """
+    
+    Sub QuickSort(array, start, end):
+        if array length == 1:
+            return
+        pivot = array[1] / array[start]
+        left = start
+        right = end
+        while left != right:
+            decrease right until array[right] < array[pivot] or left == right
+            increase left until array[left] > array[pivot] or left == right
+            swap(array[left], array[right])
+        swap(array[pivot], array[right])
+        QuickSort(array, start, pivot - 1)
+        QuickSort(array, pivot + 1, end)
+
+   
+    arr = data.copy()
+    history = [arr.copy()]
+    start_time = time.perf_counter()
+
+    def quick_sort_recursive(start: int, end: int) -> None:
+        
+        if start >= end:
+            return
+
+        
+        pivot_index = start
+        pivot_value = arr[pivot_index]
+        left = start
+        right = end
+
+        # left 和 right 還沒相遇前，持續從兩邊往中間找需要交換的值
+        while left != right:
+            # 從右往左找：找到比 pivot 小的值才停下來
+            # 如果還沒找到，而且 left/right 沒相遇，就繼續往左
+            while arr[right] >= pivot_value and left != right:
+                right -= 1
+
+            # 從左往右找：找到比 pivot 大的值才停下來
+            # 如果還沒找到，而且 left/right 沒相遇，就繼續往右
+            while arr[left] <= pivot_value and left != right:
+                left += 1
+
+            # 如果 left 和 right 還沒相遇，交換兩邊不在正確區域的值
+            if left != right:
+                arr[left], arr[right] = arr[right], arr[left]
+                history.append(arr.copy())
+
+        # left/right 相遇後，把 pivot 放到正確位置
+        # 此時 right 就是 pivot 排好後的位置
+        arr[pivot_index], arr[right] = arr[right], arr[pivot_index]
+        history.append(arr.copy())
+
+        new_pivot_index = right
+
+        # 遞迴排序 pivot 左邊與右邊
+        quick_sort_recursive(start, new_pivot_index - 1)
+        quick_sort_recursive(new_pivot_index + 1, end)
+
+    quick_sort_recursive(0, len(arr) - 1)
+
+    end_time = time.perf_counter()
+    return history, end_time - start_time
+
+
+# =========================
+# 使用 Thread 執行排序
+# =========================
+
+def run_sorting_in_threads(data: List[int]) -> Dict[str, Dict[str, object]]:
+    """
+    用三個 thread 分別跑三個排序演算法。
+    每個 thread 會把自己的排序歷史紀錄與執行時間存進 results。
+    """
+    results: Dict[str, Dict[str, object]] = {}
+
+    def worker(name: str, sort_function) -> None:
+        history, elapsed_time = sort_function(data)
+        results[name] = {
+            "history": history,
+            "time": elapsed_time
+        }
+
+    threads = [
+        threading.Thread(target=worker, args=("Selection Sort", selection_sort)),
+        threading.Thread(target=worker, args=("Insertion Sort", insertion_sort)),
+        threading.Thread(target=worker, args=("Quick Sort", quick_sort)),
+    ]
+
+    for thread in threads:
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+
+    return results
+
+
+# =========================
+# 產生 GIF 動畫
+# =========================
+
+def create_sorting_gif(results: Dict[str, Dict[str, object]], output_file: str = "sorting_comparison.gif") -> None:
+    """
+    將三種排序演算法的過程製作成 GIF。
+    """
+    algorithm_names = ["Selection Sort", "Insertion Sort", "Quick Sort"]
+    histories = [results[name]["history"] for name in algorithm_names]
+    times = [results[name]["time"] for name in algorithm_names]
+
+    max_frames = max(len(history) for history in histories)
+    max_value = max(max(history[0]) for history in histories)
+
+    fig, axes = plt.subplots(3, 1, figsize=(10, 9))
+    fig.suptitle("Sorting Algorithm Visualization", fontsize=16)
+
+    def update(frame: int):
+        for index, ax in enumerate(axes):
+            ax.clear()
+
+            history = histories[index]
+            current_state = history[min(frame, len(history) - 1)]
+
+            ax.bar(range(len(current_state)), current_state)
+            ax.set_ylim(0, max_value + 10)
+            ax.set_title(
+                f"{algorithm_names[index]} | Steps: {len(history) - 1} | Time: {times[index]:.6f} sec"
             )
-            # 延遲動畫速度
-            time.sleep(speed)
+            ax.set_xlabel("Index")
+            ax.set_ylabel("Value")
 
-        # 將最小值交換到前面
-        arr[i], arr[min_idx] = arr[min_idx], arr[i]
+        return axes
 
-        # 綠色代表已排序完成
-        draw_callback(
-            arr,
-            ["green" if x <= i else "skyblue"
-                for x in range(len(arr))
-            ]
-        )
-
-        time.sleep(speed)
-
-    # 全部完成後全部變綠色
-    draw_callback(arr, ["green"] * len(arr))
-
-# =====================================================
-# Bubble Sort（泡泡排序）
-# 概念：
-# 相鄰元素兩兩比較
-# 大的數字慢慢往右邊移動
-# =====================================================
-
-def bubble_sort(arr, draw_callback, speed):
-
-    n = len(arr)
-
-    # 外層控制回合數
-    for i in range(n):
-
-        # 用來判斷是否有交換
-        swapped = False
-
-        # 每回合比較相鄰元素
-        for j in range(0, n - i - 1):
-
-            # 如果左邊比右邊大則交換
-            if arr[j] > arr[j + 1]:
-
-                arr[j], arr[j + 1] = arr[j + 1], arr[j]
-                swapped = True
-
-            # 黃色表示正在比較
-            draw_callback( arr,
-                [  "yellow" if x == j or x == j + 1
-                    else "skyblue"
-                    for x in range(len(arr))
-                ]
-            )
-
-            time.sleep(speed)
-
-        # 已完成排序的部分顯示綠色
-        draw_callback(
-            arr,
-            [
-                "green" if x >= n - i - 1
-                else "skyblue"
-                for x in range(len(arr))
-            ]
-        )
-
-        # 如果完全沒交換代表已排序完成
-        if not swapped:
-            break
-
-    draw_callback(arr, ["green"] * len(arr))
-
-# =====================================================
-# Quick Sort（快速排序）
-# 課堂版本：
-# pivot 固定取最左邊元素
-# left/right 指標往中間移動
-# =====================================================
-
-def quick_sort(arr, start, end, draw_callback, speed):
-
-    # 如果區域只剩一個元素則停止
-    if start >= end:
-        return
-
-    # pivot 設為最左邊元素
-    pivot = start
-
-    # left 從 pivot 右邊開始
-    left = start + 1
-
-    # right 從最右邊開始
-    right = end
-
-    # left 與 right 尚未交錯
-    while left <= right:
-
-        # left 尋找比 pivot 大的元素
-        while left <= end and arr[left] <= arr[pivot]:
-            left += 1
-
-        # right 尋找比 pivot 小的元素
-        while right > start and arr[right] >= arr[pivot]:
-            right -= 1
-
-        # left 與 right 尚未交錯則交換
-        if left < right:
-
-            arr[left], arr[right] = arr[right], arr[left]
-
-            # 紫色：left
-            # 橘色：right
-            # 紅色：pivot
-            draw_callback(
-                arr,
-                [
-                    "purple" if x == left else
-                    "orange" if x == right else
-                    "red" if x == pivot else
-                    "skyblue"
-                    for x in range(len(arr))
-                ]
-            )
-
-            time.sleep(speed)
-
-    # 最後將 pivot 與 right 交換
-    arr[pivot], arr[right] = arr[right], arr[pivot]
-
-    # pivot 放到正確位置後標記綠色
-    draw_callback(
-        arr,
-        [
-            "green" if x == right else
-            "skyblue"
-            for x in range(len(arr))
-        ]
+    animation = FuncAnimation(
+        fig,
+        update,
+        frames=max_frames,
+        interval=120,
+        repeat=False
     )
 
-    time.sleep(speed)
+    writer = PillowWriter(fps=8)
+    animation.save(output_file, writer=writer)
+    plt.close(fig)
 
-    # 遞迴排序左半部
-    quick_sort(arr, start, right - 1, draw_callback, speed)
 
-    # 遞迴排序右半部
-    quick_sort(arr, right + 1, end, draw_callback, speed)
+# =========================
+# 檢查排序結果是否正確
+# =========================
 
-# =====================================================
-# GUI 視覺化介面
-# =====================================================
+def is_sorted_ascending(arr: List[int]) -> bool:
+    """
+   
+    """
+    for i in range(len(arr) - 1):
+        if arr[i] > arr[i + 1]:
+            return False
+    return True
 
-class SortVisualizer:
 
-    def __init__(self, root):
-
-        self.root = root
-        self.root.title("Sorting Algorithm Visualizer")
-
-        # 資料數量
-        self.data_size = 60
-
-        # 動畫速度
-        self.speed = 0.01
-
-        # 建立隨機不重複資料
-        self.original_data = random.sample(
-            range(1, 301),
-            self.data_size
-        )
-
-        self.setup_ui()
-
-    # 建立介面
-    def setup_ui(self):
-
-        # 標題
-        title = tk.Label(
-            self.root,
-            text="Selection Sort vs Bubble Sort vs Quick Sort",
-            font=("Arial", 18, "bold")
-        )
-        title.pack(pady=10)
-
-        # 按鈕區域
-        control_frame = tk.Frame(self.root)
-        control_frame.pack(pady=5)
-
-        # 重新產生資料按鈕
-        tk.Button(
-            control_frame,
-            text="重新產生資料",
-            command=self.generate_data,
-            bg="#4CAF50",
-            fg="white",
-            width=15
-        ).grid(row=0, column=0, padx=5)
-
-        # 開始排序按鈕
-        tk.Button(
-            control_frame,
-            text="開始排序",
-            command=self.start_sorting,
-            bg="#2196F3",
-            fg="white",
-            width=15
-        ).grid(row=0, column=1, padx=5)
-
-        # 狀態文字
-        self.info_label = tk.Label(
-            self.root,
-            text="",
-            font=("Arial", 11)
-        )
-        self.info_label.pack(pady=5)
-
-        # 畫布區域
-        canvas_frame = tk.Frame(self.root)
-        canvas_frame.pack()
-
-        # Selection Sort 畫布
-        self.selection_canvas = tk.Canvas(
-            canvas_frame,
-            width=350,
-            height=250,
-            bg="white"
-        )
-        self.selection_canvas.grid(row=0, column=0, padx=10)
-
-        # Bubble Sort 畫布
-        self.bubble_canvas = tk.Canvas(
-            canvas_frame,
-            width=350,
-            height=250,
-            bg="white"
-        )
-        self.bubble_canvas.grid(row=0, column=1, padx=10)
-
-        # Quick Sort 畫布
-        self.quick_canvas = tk.Canvas(
-            canvas_frame,
-            width=350,
-            height=250,
-            bg="white"
-        )
-        self.quick_canvas.grid(row=0, column=2, padx=10)
-
-        # 演算法名稱
-        label_frame = tk.Frame(self.root)
-        label_frame.pack(pady=5)
-
-        tk.Label(
-            label_frame,
-            text="Selection Sort",
-            font=("Arial", 12, "bold")
-        ).grid(row=0, column=0, padx=95)
-
-        tk.Label(
-            label_frame,
-            text="Bubble Sort",
-            font=("Arial", 12, "bold")
-        ).grid(row=0, column=1, padx=95)
-
-        tk.Label(
-            label_frame,
-            text="Quick Sort",
-            font=("Arial", 12, "bold")
-        ).grid(row=0, column=2, padx=95)
-
-        # 顯示執行時間
-        result_frame = tk.Frame(self.root)
-        result_frame.pack(pady=10)
-
-        self.selection_time_label = tk.Label(
-            result_frame,
-            text="Selection: ",
-            font=("Arial", 11)
-        )
-        self.selection_time_label.grid(row=0, column=0, padx=20)
-
-        self.bubble_time_label = tk.Label(
-            result_frame,
-            text="Bubble: ",
-            font=("Arial", 11)
-        )
-        self.bubble_time_label.grid(row=0, column=1, padx=20)
-
-        self.quick_time_label = tk.Label(
-            result_frame,
-            text="Quick: ",
-            font=("Arial", 11)
-        )
-        self.quick_time_label.grid(row=0, column=2, padx=20)
-
-        # 初始資料繪圖
-        self.draw_data(
-            self.selection_canvas,
-            self.original_data,
-            ["skyblue"] * len(self.original_data)
-        )
-
-        self.draw_data(
-            self.bubble_canvas,
-            self.original_data,
-            ["skyblue"] * len(self.original_data)
-        )
-
-        self.draw_data(
-            self.quick_canvas,
-            self.original_data,
-            ["skyblue"] * len(self.original_data)
-        )
-
-    # 重新產生隨機資料
-    def generate_data(self):
-
-        self.original_data = random.sample(
-            range(1, 301),
-            self.data_size
-        )
-
-        self.draw_data(
-            self.selection_canvas,
-            self.original_data,
-            ["skyblue"] * len(self.original_data)
-        )
-
-        self.draw_data(
-            self.bubble_canvas,
-            self.original_data,
-            ["skyblue"] * len(self.original_data)
-        )
-
-        self.draw_data(
-            self.quick_canvas,
-            self.original_data,
-            ["skyblue"] * len(self.original_data)
-        )
-
-        self.selection_time_label.config(text="Selection: ")
-        self.bubble_time_label.config(text="Bubble: ")
-        self.quick_time_label.config(text="Quick: ")
-
-        self.info_label.config(text="已重新產生隨機資料")
-
-    # 繪製長條圖
-    def draw_data(self, canvas, data, color_array):
-
-        # 清除畫布
-        canvas.delete("all")
-
-        canvas_width = 350
-        canvas_height = 250
-
-        # 每個長條寬度
-        bar_width = canvas_width / len(data)
-
-        # 找最大值
-        max_data = max(data)
-
-        # 開始畫圖
-        for i, value in enumerate(data):
-
-            x0 = i * bar_width
-            y0 = canvas_height - (value / max_data) * 220
-
-            x1 = (i + 1) * bar_width
-            y1 = canvas_height
-
-            canvas.create_rectangle(
-                x0,
-                y0,
-                x1,
-                y1,
-                fill=color_array[i],
-                outline=""
-            )
-
-        self.root.update_idletasks()
-
-    # 開始排序
-    def start_sorting(self):
-
-        # 複製三份資料
-        selection_data = self.original_data.copy()
-        bubble_data = self.original_data.copy()
-        quick_data = self.original_data.copy()
-
-        self.info_label.config(text="排序中...")
-
-        # 建立三個 thread
-        t1 = threading.Thread(
-            target=self.run_selection_sort,
-            args=(selection_data,)
-        )
-
-        t2 = threading.Thread(
-            target=self.run_bubble_sort,
-            args=(bubble_data,)
-        )
-
-        t3 = threading.Thread(
-            target=self.run_quick_sort,
-            args=(quick_data,)
-        )
-
-        # 同時開始執行
-        t1.start()
-        t2.start()
-        t3.start()
-
-    # 執行 Selection Sort
-    def run_selection_sort(self, data):
-        start = time.perf_counter()
-        selection_sort(
-            data,
-            lambda d, c:
-            self.draw_data(self.selection_canvas, d, c),
-            self.speed
-        )
-
-        end = time.perf_counter()
-
-        self.selection_time_label.config(
-            text=f"Selection: {end - start:.4f} 秒"
-        )
-
-    # 執行 Bubble Sort
-    def run_bubble_sort(self, data):
-
-        start = time.perf_counter()
-
-        bubble_sort(
-            data,
-            lambda d, c:
-            self.draw_data(self.bubble_canvas, d, c),
-            self.speed
-        )
-
-        end = time.perf_counter()
-
-        self.bubble_time_label.config(
-            text=f"Bubble: {end - start:.4f} 秒"
-        )
-
-    # 執行 Quick Sort
-    def run_quick_sort(self, data):
-
-        start = time.perf_counter()
-
-        quick_sort(
-            data,
-            0,
-            len(data) - 1,
-            lambda d, c:
-            self.draw_data(self.quick_canvas, d, c),
-            self.speed
-        )
-
-        # 排序完成後全部變綠色
-        self.draw_data(
-            self.quick_canvas,
-            data,
-            ["green"] * len(data)
-        )
-
-        end = time.perf_counter()
-
-        self.quick_time_label.config(
-            text=f"Quick: {end - start:.4f} 秒"
-        )
-
-        self.info_label.config(text="排序完成！")
-# =====================================================
+# =========================
 # 主程式
-# =====================================================
+# =========================
+
+def main() -> None:
+    
+    N = 30
+
+    data = generate_unique_random_numbers(N, 10, 200)
+
+    print("Original data:")
+    print(data)
+    print()
+
+    results = run_sorting_in_threads(data)
+
+    for name, result in results.items():
+        final_state = result["history"][-1]
+        elapsed_time = result["time"]
+
+        print(f"{name}")
+        print(f"Execution time: {elapsed_time:.6f} seconds")
+        print(f"Steps recorded: {len(result['history']) - 1}")
+        print(f"Sorted correctly: {is_sorted_ascending(final_state)}")
+        print(final_state)
+        print("-" * 60)
+
+    create_sorting_gif(results, "sorting_comparison.gif")
+    print("GIF file created: sorting_comparison.gif")
+
 
 if __name__ == "__main__":
-
-    # 建立視窗
-    root = tk.Tk()
-    # 建立 GUI 物件
-    app = SortVisualizer(root)
-    # 執行 GUI
-    root.mainloop()
+    main()
